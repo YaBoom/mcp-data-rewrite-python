@@ -1,0 +1,25 @@
+# 构建上下文瘦身 + 防泄漏
+# 注意：.env 绝不能进镜像
+
+.venv/
+.env
+.env.*
+!.env.example
+
+.git/
+.gitignore
+.idea/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 测试与脚本不参与运行时
+tests/
+scripts/
+
+# 文档只保留 README.md（pyproject.toml 的 readme 字段依赖它）
+*.md
+!README.md

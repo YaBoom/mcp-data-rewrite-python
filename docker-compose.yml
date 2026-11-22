@@ -1,0 +1,79 @@
+# 本地部署实践：MySQL + Redis + MCP Server
+#
+# 用法：
+#   docker compose up -d mysql redis        # 起基础设施
+#   docker compose run --rm -T mcp-server   # 交互式跑 MCP server（stdio）
+#   docker compose down -v                  # 清干净（含数据卷）
+#
+# 端口说明：宿主机 3306 已被本机 MySQL 占用，这里映射到 3307。
+# 容器内互访仍走 3306（服务名 mysql），不受映射影响。
+
+name: mcp-enterprise-data
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mcp-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      # 本地演示用弱口令，仅用于一次性容器卷；真实环境请改用密钥管理。
+      # 这里刻意不写 ${DB_PASSWORD}：compose 会自动读取项目根 .env，
+      # 那样本地真实密码会静默覆盖此处配置，排查起来很麻烦。
+      MYSQL_ROOT_PASSWORD: demo123456
+      MYSQL_DATABASE: enterprise_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./deploy/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pdemo123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: mcp-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-data-rewrite-python:0.1.0
+    container_name: mcp-server
+    environment:
+      # 角色只在这里给：模型无法通过工具参数提权。
+      # 注意不要写成 ${MCP_USER_ROLE:-...}：compose 会自动读项目根的 .env，
+      # 那样 .env 里的 admin 会静默盖掉这里。要换角色用：
+      #   docker compose run --rm -T -e MCP_USER_ROLE=employee mcp-server
+      MCP_USER_ROLE: manager
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: demo123456
+      DB_NAME: enterprise_db
+      REDIS_URL: redis://redis:6379/0
+      REDIS_KEY_PREFIX: "erp:"
+      API_BASE_URL: http://host.docker.internal:3001
+      LOG_LEVEL: INFO
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # stdio 协议必需：保留 stdin，绝不能加 TTY
+    stdin_open: true
+    tty: false
+
+volumes:
+  mysql_data:

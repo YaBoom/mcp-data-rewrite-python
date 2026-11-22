@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "tool-employee-denied",
+      "group": "tool-permission",
+      "role": "employee",
+      "sql": "SELECT * FROM employees",
+      "params": [],
+      "expect": { "kind": "error", "type": "PermissionError", "match": "无权调用" }
+    },
+    {
+      "id": "tool-manager-allowed",
+      "group": "tool-permission",
+      "role": "manager",
+      "sql": "SELECT * FROM sales",
+      "params": [],
+      "rows": [{ "id": 1 }],
+      "expect": { "kind": "ok", "row_count": 1 }
+    },
+    {
+      "id": "table-manager-blocked-audit",
+      "group": "table-permission",
+      "role": "manager",
+      "sql": "SELECT * FROM audit_logs",
+      "params": [],
+      "expect": { "kind": "error", "type": "PermissionError", "match": "audit_logs" }
+    },
+    {
+      "id": "table-admin-wildcard",
+      "group": "table-permission",
+      "role": "admin",
+      "sql": "SELECT * FROM audit_logs",
+      "params": [],
+      "rows": [{ "id": 1 }],
+      "expect": { "kind": "ok" }
+    },
+    {
+      "id": "table-db-qualified-name",
+      "group": "table-permission",
+      "role": "manager",
+      "sql": "SELECT * FROM `erp`.`sales`",
+      "params": [],
+      "rows": [{ "id": 1 }],
+      "expect": { "kind": "ok" }
+    },
+    {
+      "id": "rl-non-select",
+      "group": "readonly",
+      "role": "admin",
+      "sql": "DELETE FROM employees",
+      "params": [],
+      "expect": { "kind": "error", "type": "ValueError", "match": "只允许执行 SELECT" }
+    },
+    {
+      "id": "rl-outfile",
+      "group": "readonly",
+      "role": "admin",
+      "sql": "SELECT * FROM employees INTO OUTFILE '/tmp/x'",
+      "params": [],
+      "expect": { "kind": "error", "type": "ValueError", "match": "OUTFILE" }
+    },
+    {
+      "id": "rl-for-update",
+      "group": "readonly",
+      "role": "admin",
+      "sql": "SELECT * FROM employees FOR UPDATE",
+      "params": [],
+      "expect": { "kind": "error", "type": "ValueError", "match": "FOR UPDATE" }
+    },
+    {
+      "id": "rl-multi-statement",
+      "group": "readonly",
+      "role": "admin",
+      "sql": "SELECT 1; DROP TABLE t",
+      "params": [],
+      "expect": { "kind": "error", "type": "ValueError", "match": "多条语句" }
+    },
+    {
+      "id": "rl-literal-not-false-positive",
+      "group": "readonly",
+      "role": "manager",
+      "sql": "SELECT * FROM employees WHERE note = 'from sales'",
+      "params": [],
+      "rows": [{ "id": 1 }],
+      "expect": { "kind": "ok" }
+    },
+    {
+      "id": "ph-missing-params",
+      "group": "placeholder",
+      "role": "manager",
+      "sql": "SELECT * FROM employees WHERE id = ?",
+      "params": [],
+      "expect": { "kind": "error", "type": "ValueError", "match": "不一致" }
+    },
+    {
+      "id": "ph-extra-params",
+      "group": "placeholder",
+      "role": "manager",
+      "sql": "SELECT * FROM employees WHERE id = ?",
+      "params": [1, 2],
+      "expect": { "kind": "error", "type": "ValueError", "match": "不一致" }
+    },
+    {
+      "id": "ph-bound-not-inlined",
+      "group": "placeholder",
+      "role": "manager",
+      "sql": "SELECT name FROM employees WHERE department = ? LIMIT ?",
+      "params": ["技术部", 10],
+      "rows": [{ "name": "张三" }],
+      "expect": { "kind": "ok", "sent_params": ["技术部", 10], "sent_sql_not_contains": "技术部" }
+    },
+    {
+      "id": "ph-question-mark-in-literal",
+      "group": "placeholder",
+      "role": "manager",
+      "sql": "SELECT * FROM employees WHERE note = 'a?b'",
+      "params": [],
+      "rows": [{ "id": 1 }],
+      "expect": { "kind": "ok" }
+    },
+    {
+      "id": "mask-manager",
+      "group": "masking",
+      "role": "manager",
+      "sql": "SELECT * FROM employees",
+      "params": [],
+      "rows": [{ "name": "张三", "password": "p@ss", "salary": 20000 }],
+      "expect": { "kind": "ok", "masked": ["password", "salary"], "plain": { "name": "张三" } }
+    },
+    {
+      "id": "mask-admin-none",
+      "group": "masking",
+      "role": "admin",
+      "sql": "SELECT * FROM employees",
+      "params": [],
+      "rows": [{ "name": "张三", "password": "p@ss" }],
+      "expect": { "kind": "ok", "plain": { "password": "p@ss" } }
+    },
+    {
+      "id": "timeout",
+      "group": "timeout",
+      "role": "manager",
+      "sql": "SELECT * FROM employees",
+      "params": [],
+      "rows": [],
+      "delay": 0.3,
+      "timeout_s": 0.05,
+      "expect": { "kind": "error", "type": "TimeoutError", "match": "超时" }
+    },
+    {
+      "id": "contract-reject-user-role",
+      "group": "role-injection",
+      "role": "manager",
+      "sql": "SELECT * FROM employees",
+      "params": [],
+      "extra_args": { "user_role": "admin" },
+      "expect": { "kind": "error", "type": "ValidationError" }
+    }
+  ]
+}
